@@ -1,0 +1,2187 @@
+To connect your Raspberry Pi 3B to the **GPS NEO-7M module** and print live GPS data (latitude, longitude, altitude, speed, time, HDOP) directly in the terminal, follow these steps. This involves configuring the UART interface and parsing NMEA sentences from the GPS module.
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **1. Hardware Setup**
+
+
+#### **GPS Module Pinout (NEO-7M):**
+
+
+| GPS Pin | Function | Raspberry Pi GPIO Pin |
+
+
+|---------|---------------|-----------------------|
+
+
+| VCC | 3.3V/5V Power | 3.3V or 5V (Pi Pin 1/2) |
+
+
+| GND | Ground | GND (Pi Pin 6/9/14/20) |
+
+
+| TX | Transmit Data | GPIO 15 (RxD, Pi Pin 10) |
+
+
+| RX | Receive Data | GPIO 14 (TxD, Pi Pin 8) |
+
+
+
+
+
+
+
+
+**Wiring Example:**
+
+
+- GPS `VCC` → Pi `3.3V` (Pin 1)  
+
+
+- GPS `GND` → Pi `GND` (Pin 6)  
+
+
+- GPS `TX` → Pi `GPIO 15 (RxD)` (Pin 10)  
+
+
+- GPS `RX` → Pi `GPIO 14 (TxD)` (Pin 8) (Optional, needed only for configuring the GPS)
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **2. Enable UART on Raspberry Pi**
+
+
+The NEO-7M communicates via UART. Enable UART on the Pi:
+
+
+
+
+
+
+
+
+1. **Edit `/boot/config.txt`:**
+
+
+   ```bash
+
+
+   sudo nano /boot/config.txt
+
+
+   ```
+
+
+   Add these lines at the end:
+
+
+   ```bash
+
+
+   enable_uart=1 # Enable UART
+
+
+   dtoverlay=disable-bt # Disable Bluetooth (optional, frees up UART)
+
+
+   ```
+
+
+
+
+
+
+
+
+2. **Disable the Serial Console (if enabled):**  
+
+
+   If you previously enabled the serial console, disable it:
+
+
+   ```bash
+
+
+   sudo raspi-config
+
+
+   ```
+
+
+   Navigate to **Interface Options → Serial Port → Disable login shell over serial**.
+
+
+
+
+
+
+
+
+3. **Reboot the Pi:**
+
+
+   ```bash
+
+
+   sudo reboot
+
+
+   ```
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **3. Install Dependencies**
+
+
+Install tools to parse NMEA data:
+
+
+```bash
+
+
+sudo apt-get update
+
+
+sudo apt-get install python3-serial python3-pip
+
+
+pip3 install pynmea2
+
+
+```
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **4. Test GPS Raw Data**
+
+
+Verify that the GPS is sending data over UART.
+
+
+
+
+
+
+
+
+1. **Check the UART device name:**
+
+
+   - For Pi 3B, the UART port is `/dev/serial0` (aliased to `/dev/ttyS0` or `/dev/ttyAMA0`).
+
+
+
+
+
+
+
+
+2. **View raw NMEA data:**
+
+
+   ```bash
+
+
+   sudo apt-get install screen
+
+
+   screen /dev/serial0 9600
+
+
+   ```
+
+
+   - **Baud Rate**: NEO-7M defaults to `9600` baud.  
+
+
+   - You should see NMEA sentences like `$GPRMC`, `$GPGGA`, etc.  
+
+
+   - Press `Ctrl+A → :quit` to exit `screen`.
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **5. Parse NMEA Data with Python**
+
+
+Create a Python script to extract **lat, long, altitude, speed, time, and HDOP**.
+
+
+
+
+
+
+
+
+#### **Script: `gps_parser.py`**
+
+
+```python
+
+
+import serial
+
+
+from pynmea2 import parse_string
+
+
+from datetime import datetime
+
+
+
+
+def parse_gps_data(port='/dev/serial0', baudrate=9600):
+
+
+    ser = serial.Serial(port, baudrate, timeout=1)
+
+
+    try:
+
+
+        while True:
+
+
+            line = ser.readline().decode('utf-8', errors='replace').strip()
+
+
+            if line.startswith('$'):
+
+
+                try:
+
+
+                    msg = parse_string(line)
+
+
+                    # Extract data based on NMEA sentence type
+
+
+                    if isinstance(msg, parse_string.GGA):
+
+
+                        # GPGGA: Time, Lat, Lon, Altitude, HDOP
+
+
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] GPGGA Sentence:")
+
+
+                        print(f" Time (UTC): {msg.timestamp}")
+
+
+                        print(f" Latitude: {msg.lat} {msg.lat_dir}")
+
+
+                        print(f" Longitude: {msg.lon} {msg.lon_dir}")
+
+
+                        print(f" Altitude: {msg.altitude} {msg.altitude_units}")
+
+
+                        print(f" HDOP: {msg.horizontal_dil}")
+
+
+                        print("-" * 40)
+
+
+                    elif isinstance(msg, parse_string.RMC):
+
+
+                        # GPRMC: Speed, Date
+
+
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] GPRMC Sentence:")
+
+
+                        print(f" Speed (knots): {msg.spd_over_grnd}")
+
+
+                        print(f" Date: {msg.datestamp}")
+
+
+                        print("-" * 40)
+
+
+                except Exception as e:
+
+
+                    print(f"Error parsing data: {e}")
+
+
+    except KeyboardInterrupt:
+
+
+        print("Exiting...")
+
+
+    finally:
+
+
+        ser.close()
+
+
+
+
+
+
+
+
+if __name__ == "__main__":
+
+
+    parse_gps_data()
+
+SyntaxError: invalid non-printable character U+00A0, only solve this, dont change anything else
+```
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **6. Run the Script**
+
+
+Execute the script:
+
+
+```bash
+
+
+python3 gps_parser.py
+
+
+```
+
+
+
+
+
+
+
+
+#### **Expected Output:**
+
+
+```
+
+
+[14:30:45] GPGGA Sentence:
+
+
+  Time (UTC): 12:34:56.789
+
+
+  Latitude: 37.7749 N
+
+
+  Longitude: -122.4194 W
+
+
+  Altitude: 100.5 meters
+
+
+  HDOP: 1.2
+
+
+----------------------------------------
+
+
+[14:30:46] GPRMC Sentence:
+
+
+  Speed (knots): 25.3
+
+
+  Date: 2023-10-05
+
+
+----------------------------------------
+
+
+```
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **7. Key NMEA Sentences Explained**
+
+
+1. **`$GPGGA`**: Global Positioning System Fix Data (Time, Lat/Lon, Altitude, HDOP).  
+
+
+2. **`$GPRMC`**: Recommended Minimum Specific GNSS Data (Time, Date, Speed, Lat/Lon).  
+
+
+3. **`$GPVTG`**: Course over ground and speed.  
+
+
+4. **`$GPGSV`**: Satellites in view.  
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **8. Troubleshooting**
+
+
+1. **No Data?**  
+
+
+   - Check wiring (TX → RX, RX → TX).  
+
+
+   - Confirm baud rate (`9600` for NEO-7M).  
+
+
+   - Ensure the GPS has a clear view of the sky (fix may take 5-10 minutes).  
+
+
+
+
+
+
+
+
+2. **Permission Denied?**  
+
+
+   Add your user to the `dialout` group:
+
+
+   ```bash
+
+
+   sudo usermod -aG dialout $USER
+
+
+   sudo reboot
+
+
+   ```
+
+
+
+
+
+
+
+
+3. **Invalid Data?**  
+
+
+   - Use `screen` to check raw NMEA output.  
+
+
+   - Wait for a GPS fix (LED on NEO-7M will blink slowly when fix is acquired).
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **9. Next Steps**
+
+
+Once this works, use the GPS data in your video-syncing program. The CSV logging script from earlier can now use the validated GPS data.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+..........................
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+The script you provided is mostly functional, but it has **critical flaws** that will cause **TypeErrors** or **inconsistent data** when the GPS module hasn't acquired a fix yet (e.g., `latitude`/`longitude` being `None`). Here's the breakdown and fixes:
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **1. Major Issues**
+
+
+#### **Problem 1: `None` Values in GPS Data**
+
+
+- When the GPS has no fix, `gps_data` values (e.g., `latitude`, `longitude`) remain `None`.
+
+
+- **Result**: `TypeError` when formatting `None` with `:.6f` in `cv2.putText` or writing `None` to CSV.
+
+
+
+
+
+
+
+
+**Fix**: Check for `None` before using GPS data:
+
+
+```python
+
+
+# In the main loop:
+
+
+with gps_lock:
+
+
+    current_gps = gps_data.copy()
+
+
+
+
+
+
+
+
+# Replace None with default values (e.g., 0.0 or "N/A")
+
+
+lat = current_gps['latitude'] if current_gps['latitude'] is not None else 0.0
+
+
+lon = current_gps['longitude'] if current_gps['longitude'] is not None else 0.0
+
+
+speed = current_gps['speed'] if current_gps['speed'] is not None else 0.0
+
+
+altitude = current_gps['altitude'] if current_gps['altitude'] is not None else 0.0
+
+
+gps_time = current_gps['timestamp'] if current_gps['timestamp'] is not None else "N/A"
+
+
+
+
+
+
+
+
+# Use these variables in overlays and CSV
+
+
+```
+
+
+
+
+
+
+
+
+#### **Problem 2: Missing HDOP (Horizontal Dilution of Precision)**
+
+
+- The script doesn’t log HDOP, which is critical for understanding GPS accuracy.
+
+
+
+
+
+
+
+
+**Fix**: Add HDOP to `gps_data` and CSV:
+
+
+```python
+
+
+# Update shared GPS data structure
+
+
+gps_data = {
+
+
+    'timestamp': None,
+
+
+    'latitude': None,
+
+
+    'longitude': None,
+
+
+    'speed': None,
+
+
+    'altitude': None,
+
+
+    'hdop': None # Add this
+
+
+}
+
+
+
+
+
+
+
+
+# In the GPS thread:
+
+
+if packet.mode >= 2:
+
+
+    with gps_lock:
+
+
+        gps_data['hdop'] = packet.hdop # Requires gpsd v3.25+ or parsing NMEA directly
+
+
+
+
+
+
+
+
+# Update CSV header and writerow:
+
+
+csv_writer.writerow([
+
+
+    'video_timestamp_sec',
+
+
+    'gps_timestamp',
+
+
+    'latitude',
+
+
+    'longitude',
+
+
+    'speed',
+
+
+    'altitude',
+
+
+    'hdop' # Add this
+
+
+])
+
+
+
+
+
+
+
+
+# In CSV logging:
+
+
+csv_writer.writerow([
+
+
+    video_timestamp_sec,
+
+
+    gps_time,
+
+
+    lat,
+
+
+    lon,
+
+
+    speed,
+
+
+    altitude,
+
+
+    current_gps['hdop'] # Add this
+
+
+])
+
+
+```
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **2. Other Improvements**
+
+
+#### **GPS Fix Check in Main Loop**
+
+
+Add a check to avoid using stale data if the GPS loses fix:
+
+
+```python
+
+
+if current_gps['timestamp'] is None:
+
+
+    print("No GPS fix!")
+
+
+    # Optionally skip logging this frame or use placeholders
+
+
+```
+
+
+
+
+
+
+
+
+#### **VideoWriter Frame Size Mismatch**
+
+
+Ensure the video resolution (`640x480`) matches the camera’s actual output:
+
+
+```python
+
+
+# Get actual frame dimensions from the camera
+
+
+width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+
+
+height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+
+out = cv2.VideoWriter('output.avi', fourcc, 30.0, (width, height))
+
+
+```
+
+
+
+
+
+
+
+
+#### **Graceful Shutdown on `Ctrl+C`**
+
+
+Handle `KeyboardInterrupt` in the main loop:
+
+
+```python
+
+
+try:
+
+
+    while True:
+
+
+        # ... existing code ...
+
+
+except KeyboardInterrupt:
+
+
+    print("Stopping recording...")
+
+
+```
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **3. Final Fixed Code**
+
+
+```python
+
+
+import cv2
+
+
+import gpsd
+
+
+import csv
+
+
+from threading import Thread, Lock
+
+
+import time
+
+
+
+
+
+
+
+
+# Shared GPS Data
+
+
+gps_data = {
+
+
+    'timestamp': None,
+
+
+    'latitude': None,
+
+
+    'longitude': None,
+
+
+    'speed': None,
+
+
+    'altitude': None,
+
+
+    'hdop': None
+
+
+}
+
+
+gps_lock = Lock()
+
+
+
+
+
+
+
+
+def gps_thread_function():
+
+
+    """Fetch GPS data continuously and update shared variables."""
+
+
+    gpsd.connect()
+
+
+    while True:
+
+
+        try:
+
+
+            packet = gpsd.get_current()
+
+
+            if packet.mode >= 2: # Valid 2D/3D fix
+
+
+                with gps_lock:
+
+
+                    gps_data['timestamp'] = packet.time
+
+
+                    gps_data['latitude'] = packet.lat
+
+
+                    gps_data['longitude'] = packet.lon
+
+
+                    gps_data['speed'] = packet.hspeed
+
+
+                    gps_data['altitude'] = packet.alt
+
+
+                    gps_data['hdop'] = packet.hdop # Requires gpsd support
+
+
+            else:
+
+
+                with gps_lock:
+
+
+                    # Reset data if fix is lost
+
+
+                    gps_data.update({k: None for k in gps_data})
+
+
+        except Exception as e:
+
+
+            print(f"GPS Error: {e}")
+
+
+        time.sleep(0.1)
+
+
+
+
+
+
+
+
+def main():
+
+
+    # Video setup
+
+
+    cap = cv2.VideoCapture('/dev/video0')
+
+
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+
+
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+
+
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+
+
+    out = cv2.VideoWriter('output.avi', fourcc, fps, (width, height))
+
+
+
+
+
+
+
+
+    # CSV setup
+
+
+    csv_file = open('gps_log.csv', 'w', newline='')
+
+
+    csv_writer = csv.writer(csv_file)
+
+
+    csv_writer.writerow([
+
+
+        'video_timestamp_sec',
+
+
+        'gps_timestamp',
+
+
+        'latitude',
+
+
+        'longitude',
+
+
+        'speed',
+
+
+        'altitude',
+
+
+        'hdop'
+
+
+    ])
+
+
+
+
+
+
+
+
+    # Start GPS thread
+
+
+    gps_thread = Thread(target=gps_thread_function, daemon=True)
+
+
+    gps_thread.start()
+
+
+
+
+
+
+
+
+    start_time = time.time()
+
+
+
+
+
+
+
+
+    try:
+
+
+        while True:
+
+
+            ret, frame = cap.read()
+
+
+            if not ret:
+
+
+                break
+
+
+
+
+
+
+
+
+            video_timestamp_sec = round(time.time() - start_time, 3)
+
+
+
+
+
+
+
+
+            with gps_lock:
+
+
+                current_gps = gps_data.copy()
+
+
+
+
+
+
+
+
+            # Handle None values
+
+
+            lat = current_gps['latitude'] if current_gps['latitude'] is not None else 0.0
+
+
+            lon = current_gps['longitude'] if current_gps['longitude'] is not None else 0.0
+
+
+            speed = current_gps['speed'] if current_gps['speed'] is not None else 0.0
+
+
+            altitude = current_gps['altitude'] if current_gps['altitude'] is not None else 0.0
+
+
+            hdop = current_gps['hdop'] if current_gps['hdop'] is not None else 0.0
+
+
+            gps_time = current_gps['timestamp'] if current_gps['timestamp'] is not None else "N/A"
+
+
+
+
+
+
+
+
+            # Overlay data (skip if no fix)
+
+
+            if current_gps['timestamp'] is not None:
+
+
+                cv2.putText(frame, f"Time: {video_timestamp_sec}s", (10, 30),
+
+
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+
+                cv2.putText(frame, f"Lat: {lat:.6f}", (10, 60),
+
+
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+
+                cv2.putText(frame, f"Lon: {lon:.6f}", (10, 90),
+
+
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+
+                cv2.putText(frame, f"HDOP: {hdop:.1f}", (10, 120),
+
+
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+
+            else:
+
+
+                cv2.putText(frame, "Awaiting GPS fix...", (10, 30),
+
+
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+
+
+
+
+
+
+
+            out.write(frame)
+
+
+            csv_writer.writerow([
+
+
+                video_timestamp_sec,
+
+
+                gps_time,
+
+
+                lat,
+
+
+                lon,
+
+
+                speed,
+
+
+                altitude,
+
+
+                hdop
+
+
+            ])
+
+
+            csv_file.flush()
+
+
+
+
+
+
+
+
+            cv2.imshow('Frame', frame)
+
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+
+
+                break
+
+
+
+
+
+
+
+
+    except KeyboardInterrupt:
+
+
+        print("Stopped by user.")
+
+
+    finally:
+
+
+        cap.release()
+
+
+        out.release()
+
+
+        csv_file.close()
+
+
+        cv2.destroyAllWindows()
+
+
+
+
+
+
+
+
+if __name__ == "__main__":
+
+
+    main()
+
+
+```
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **4. Key Fixes**
+
+
+1. **Handling `None` Values**: Defaults to `0.0` or `"N/A"` when GPS data is missing.
+
+
+2. **HDOP Support**: Added HDOP for accuracy metrics.
+
+
+3. **Dynamic Frame Size**: Uses the camera’s actual resolution for `VideoWriter`.
+
+
+4. **GPS Fix Check**: Resets data if the fix is lost and shows "Awaiting GPS fix..." on the video.
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **5. Testing**
+
+
+1. **No GPS Fix**: The overlay will show "Awaiting GPS fix..." and log zeros/"N/A" in CSV.
+
+
+2. **GPS Fix Acquired**: Data updates live in CSV and video overlay.
+
+
+3. **GPS Fix Lost**: Data resets to `None`, and the overlay warns the user.
+
+
+
+
+
+
+
+
+This script now handles edge cases gracefully and avoids runtime errors.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+....................................
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Let’s break this into two parts:  
+
+
+**1. Confirming the GPSd-based code works correctly**  
+
+
+**2. Playing the video with synchronized map plotting**
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **Part 1: Why the GPSd Code Works (No TypeErrors)**
+
+
+#### **Key Points**:
+
+
+1. **GPSd Abstraction**: The `gpsd` library parses NMEA sentences internally and provides Python objects (e.g., `packet.lat`, `packet.time`), so you don’t need to handle raw NMEA strings.
+
+
+2. **None Handling**: The code now replaces `None` with defaults (e.g., `0.0` or `"N/A"`), preventing `TypeError` during string formatting or CSV writes.
+
+
+3. **Thread Safety**: The `gps_lock` ensures thread-safe access to shared GPS data between the GPS thread and main video thread.
+
+
+
+
+
+
+
+
+#### **How to Test**:
+
+
+1. **Run the Script**:
+
+
+   ```bash
+
+
+   python3 gps_video_recorder.py
+
+
+   ```
+
+
+2. **Verify Output**:
+
+
+   - **Video**: `output.avi` with overlaid GPS data (or "Awaiting GPS fix..." message).  
+
+
+   - **CSV**: `gps_log.csv` with timestamps and GPS values (invalid data replaced with `0.0` or `"N/A"`).
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **Part 2: Play Video with Synced Map Plotting**
+
+
+We’ll create a **second script** to play the video and plot GPS data on a map in real-time.  
+
+
+This script will:
+
+
+1. Read the video and CSV log.
+
+
+2. For each frame, find the closest GPS data based on `video_timestamp_sec`.
+
+
+3. Update a map (e.g., using `folium`) to show the current location.
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **Step 1: Install Dependencies**
+
+
+```bash
+
+
+pip3 install folium pandas opencv-python
+
+
+```
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **Step 2: Create the Playback Script**
+
+
+#### **Script: `video_map_plotter.py`**
+
+
+```python
+
+
+import cv2
+
+
+import pandas as pd
+
+
+import folium
+
+
+import time
+
+
+from datetime import timedelta
+
+
+
+
+
+
+
+
+def play_video_with_map(video_path, csv_path):
+
+
+    # Load CSV data
+
+
+    df = pd.read_csv(csv_path)
+
+
+    df['gps_timestamp'] = pd.to_datetime(df['gps_timestamp'], errors='coerce')
+
+
+    df = df.fillna(0.0) # Replace NaN with 0.0
+
+
+    
+
+
+    # Initialize video capture
+
+
+    cap = cv2.VideoCapture(video_path)
+
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+
+    
+
+
+    # Create initial map using the first valid GPS point
+
+
+    start_row = df[(df['latitude'] != 0.0) & (df['longitude'] != 0.0)].iloc[0]
+
+
+    m = folium.Map(
+
+
+        location=[start_row['latitude'], start_row['longitude']],
+
+
+        zoom_start=15
+
+
+    )
+
+
+    map_path = "live_map.html"
+
+
+    m.save(map_path)
+
+
+    print(f"Initial map saved to {map_path}. Open this in a browser.")
+
+
+    
+
+
+    # Track previous position for drawing lines
+
+
+    prev_lat, prev_lon = None, None
+
+
+    
+
+
+    try:
+
+
+        for frame_num in range(total_frames):
+
+
+            ret, frame = cap.read()
+
+
+            if not ret:
+
+
+                break
+
+
+            
+
+
+            # Calculate current video timestamp
+
+
+            current_time_sec = frame_num / fps
+
+
+            
+
+
+            # Find closest CSV row by timestamp
+
+
+            closest_row = df.iloc[(df['video_timestamp_sec'] - current_time_sec).abs().idxmin()]
+
+
+            lat, lon = closest_row['latitude'], closest_row['longitude']
+
+
+            
+
+
+            # Skip invalid points
+
+
+            if lat == 0.0 or lon == 0.0:
+
+
+                continue
+
+
+            
+
+
+            # Update map with new point
+
+
+            m = folium.Map(location=[lat, lon], zoom_start=15)
+
+
+            folium.Marker(
+
+
+                [lat, lon],
+
+
+                tooltip=f"Time: {timedelta(seconds=current_time_sec)}",
+
+
+                icon=folium.Icon(color='red')
+
+
+            ).add_to(m)
+
+
+            
+
+
+            # Draw a line if previous point exists
+
+
+            if prev_lat and prev_lon:
+
+
+                folium.PolyLine(
+
+
+                    locations=[[prev_lat, prev_lon], [lat, lon]],
+
+
+                    color='blue'
+
+
+                ).add_to(m)
+
+
+            
+
+
+            prev_lat, prev_lon = lat, lon
+
+
+            m.save(map_path)
+
+
+            
+
+
+            # Display video frame
+
+
+            cv2.imshow('Video Playback', frame)
+
+
+            
+
+
+            # Press 'q' to quit
+
+
+            if cv2.waitKey(int(1000 / fps)) & 0xFF == ord('q'):
+
+
+                break
+
+
+    finally:
+
+
+        cap.release()
+
+
+        cv2.destroyAllWindows()
+
+
+
+
+
+
+
+
+if __name__ == "__main__":
+
+
+    play_video_with_map("output.avi", "gps_log.csv")
+
+
+```
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **Step 3: How It Works**
+
+
+1. **CSV Handling**:
+
+
+   - Uses `pandas` to load the CSV and replace `NaN`/`None` with `0.0`.  
+
+
+   - Finds the closest GPS data for each video frame using `video_timestamp_sec`.
+
+
+
+
+
+
+
+
+2. **Map Updates**:
+
+
+   - Creates an initial map using the first valid GPS point.  
+
+
+   - For each frame, adds a marker and draws a line between consecutive points.  
+
+
+   - Saves the updated map to `live_map.html` (refresh your browser to see updates).
+
+
+
+
+
+
+
+
+3. **Video Playback**:
+
+
+   - Uses `OpenCV` to play the video at the correct FPS.  
+
+
+   - Press `q` to quit playback.
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **Step 4: Run the Playback**
+
+
+```bash
+
+
+python3 video_map_plotter.py
+
+
+```
+
+
+
+
+
+
+
+
+#### **Expected Output**:
+
+
+- A window showing the video playback.  
+
+
+- A map (`live_map.html`) that updates as the video plays, showing the vehicle’s path.  
+
+
+- Example map:  
+
+
+  ![Folium Map Example](https://static.javatpoint.com/tutorial/folium/images/folium-in-python.png)
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **Critical Checks for No Errors**
+
+
+1. **Handling Invalid Data**:
+
+
+   - The script skips plotting GPS points with `lat=0.0` or `lon=0.0` (invalid data).  
+
+
+   - `df.fillna(0.0)` ensures no `NaN` values cause errors.
+
+
+
+
+
+
+
+
+2. **Frame Rate Sync**:
+
+
+   - `cv2.waitKey(int(1000 / fps))` ensures video plays at the correct speed.
+
+
+
+
+
+
+
+
+3. **Map Refresh**:
+
+
+   - The map is saved to `live_map.html` for each frame. Manually refresh your browser to see updates.
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **Troubleshooting**
+
+
+1. **Map Not Updating**:
+
+
+   - Refresh the browser manually after each frame.  
+
+
+   - For auto-refresh, use a browser extension or a Jupyter notebook with `IPython.display`.
+
+
+
+
+
+
+
+
+2. **Slow Performance**:
+
+
+   - Reduce video resolution during recording (e.g., 320x240).  
+
+
+   - Decrease map update frequency (e.g., update every 5th frame).
+
+
+
+
+
+
+
+
+3. **No GPS Data on Map**:
+
+
+   - Ensure the CSV has valid `latitude`/`longitude` values (not `0.0`).  
+
+
+   - Check if the GPS had a fix during recording.
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+### **Final Notes**
+
+
+- **Precision**: For smoother plotting, ensure the GPS logs at a higher frequency (e.g., 10Hz) than the video FPS.  
+
+
+- **Advanced Sync**: Use the GPS module’s PPS signal to align timestamps at the hardware level.  
+
+
+- **UI Enhancements**: Use `plotly` or `Dash` for real-time interactive maps instead of static HTML files.

@@ -1,0 +1,204 @@
+python3 gpstry2.py 
+NMEA Time:   
+
+NMEA Latitude:  NMEA Longitude:  
+
+Traceback (most recent call last):
+  File "/home/arai/Desktop/gpstry2.py", line 51, in <module>
+    GPS_Info()                                          #get time, latitude, longitude
+    ^^^^^^^^^^
+  File "/home/arai/Desktop/gpstry2.py", line 20, in GPS_Info
+    lat = float(nmea_latitude)                  #convert string into float for calculation
+          ^^^^^^^^^^^^^^^^^^^^
+ValueError: could not convert string to float: ''
+
+
+
+
+
+The error message you are encountering indicates that your script is attempting to convert an empty string to a float, which is not possible in Python. This occurs in the line `lat = float(nmea_latitude)` within the `GPS_Info()` function.
+
+From the output before the error, it seems that the variables for NMEA time, latitude, and longitude are empty:
+
+```
+NMEA Time:   
+NMEA Latitude:  NMEA Longitude:
+```
+
+Here's a high-level overview of steps you can take to troubleshoot and fix this issue:
+
+1. **Check Data Source**: Ensure that the source providing the NMEA data is working correctly and that it is actually supplying the latitude and longitude values. If it is not receiving any GPS signals, the strings would be empty.
+
+2. **Validate Input**: Before converting the strings to floats, you should validate that they are not empty. You can add a check to skip the conversion if the value is empty or raise a more descriptive error.
+
+3. **Add Debugging Statements**: Before the conversion to floats, you can print out or log the values you are trying to convert. This will help you identify why the strings are empty.
+
+Here’s an example of how you could modify your `GPS_Info()` function to include error handling:
+
+```python
+def GPS_Info():
+    global nmea_time, nmea_latitude, nmea_longitude
+    
+    # Assuming these variables are set somewhere in the code
+    # nmea_time = ...
+    # nmea_latitude = ...
+    # nmea_longitude = ...
+
+    # Debugging output
+    print(f"NMEA Time: {nmea_time}")
+    print(f"NMEA Latitude: {nmea_latitude}")
+    print(f"NMEA Longitude: {nmea_longitude}")
+
+    try:
+        if not nmea_latitude or not nmea_longitude:
+            print("Error: Latitude or Longitude is empty.")
+            return  # or raise an exception or handle it as you see fit
+
+        lat = float(nmea_latitude)  # convert string into float for calculation
+        lon = float(nmea_longitude)
+
+        # Continue processing with lat and lon...
+
+    except ValueError as e:
+        print(f"ValueError: {e}")
+        print("Could not convert latitude or longitude to float.")
+        # Additional error handling here if needed
+```
+
+
+
+
+
+The error you're encountering, `ValueError: could not convert string to float: ''`, is being raised because the code is attempting to convert an empty string to a float. This typically occurs because the GPS receiver is not providing valid latitude and longitude data in the NMEA sentence.
+
+### Resolving the Issue
+
+1. **Check NMEA Data Availability:** Ensure that the GPS module is producing valid GPGGA sentences with latitude and longitude data. This can be done by logging the received NMEA strings before processing them.
+
+2. **Validate NMEA Data:** Before attempting to convert any values to floats, add a check to ensure the required values are present and are not empty.
+
+3. **Modify the GPS_Info Function:** Update your function to include checks for empty values and handle them accordingly. Here's an updated version of your code:
+
+```python
+def GPS_Info():
+    global NMEA_buff
+    global lat_in_degrees
+    global long_in_degrees
+    nmea_time = []
+    nmea_latitude = []
+    nmea_longitude = []
+    
+    nmea_time = NMEA_buff[0]  # Extract time from GPGGA string
+    nmea_latitude = NMEA_buff[1]  # Extract latitude from GPGGA string
+    nmea_longitude = NMEA_buff[3]  # Extract longitude from GPGGA string
+
+    print("NMEA Time: ", nmea_time,'\n')
+    print("NMEA Latitude:", nmea_latitude,"NMEA Longitude:", nmea_longitude,'\n')
+
+    # Check if latitude and longitude values are available
+    if nmea_latitude and nmea_longitude:
+        try:
+            lat = float(nmea_latitude)  # Convert string into float for calculation
+            longi = float(nmea_longitude)  # Convert string into float for calculation
+        except ValueError as e:
+            print("Error converting latitude or longitude to float:", e)
+            return
+
+        lat_in_degrees = convert_to_degrees(lat)  # Get latitude in degree decimal format
+        long_in_degrees = convert_to_degrees(longi)  # Get longitude in degree decimal format
+    else:
+        print("No valid latitude or longitude data available.")
+```
+
+### Additional Suggestions
+
+- **Log the Raw Received Data:** Before processing the NMEA strings, log the raw received data to see what the GPS module is sending.
+
+```python
+received_data = (str)(ser.readline())  # Read NMEA string received
+print("Raw NMEA Data:", received_data)  # Log raw data for debugging
+```
+
+- **Consider GGA Status:** The GPGGA sentence includes information about the current fix, including whether it's good or not. Check for fields that indicate fix validity (e.g., the 6th field in GPGGA tells you about the fix status).
+
+- **Ensure Connection Setup:** Verify that the GPS module is correctly connected and powered, and that the serial port is properly configured (e.g., correct baud rate).
+
+By implementing these changes and suggestions, you should be able to avoid the ValueError and better handle cases when data is not available from the GPS sensor.
+
+
+
+
+
+Sure! Below is the modified version of your Python script that removes the Google Maps functionality and only prints the latitude and longitude values to the terminal.
+
+```python
+import serial  # import serial package
+from time import sleep
+
+def GPS_Info():
+    global NMEA_buff
+    global lat_in_degrees
+    global long_in_degrees
+    nmea_time = []
+    nmea_latitude = []
+    nmea_longitude = []
+    
+    nmea_time = NMEA_buff[0]  # Extract time from GPGGA string
+    nmea_latitude = NMEA_buff[1]  # Extract latitude from GPGGA string
+    nmea_longitude = NMEA_buff[3]  # Extract longitude from GPGGA string
+
+    print("NMEA Time: ", nmea_time)
+    print("NMEA Latitude:", nmea_latitude, "NMEA Longitude:", nmea_longitude)
+
+    # Check if latitude and longitude values are available
+    if nmea_latitude and nmea_longitude:
+        try:
+            lat = float(nmea_latitude)  # Convert string into float for calculation
+            longi = float(nmea_longitude)  # Convert string into float for calculation
+        except ValueError as e:
+            print("Error converting latitude or longitude to float:", e)
+            return
+
+        lat_in_degrees = convert_to_degrees(lat)  # Get latitude in degree decimal format
+        long_in_degrees = convert_to_degrees(longi)  # Get longitude in degree decimal format
+
+        print("Latitude in degrees:", lat_in_degrees, "Longitude in degrees:", long_in_degrees)
+    else:
+        print("No valid latitude or longitude data available.")
+
+# Convert raw NMEA string into degree decimal format   
+def convert_to_degrees(raw_value):
+    decimal_value = raw_value / 100.00
+    degrees = int(decimal_value)
+    mm_mmmm = (decimal_value - int(decimal_value)) / 0.6
+    position = degrees + mm_mmmm
+    position = "%.4f" % (position)
+    return position
+
+
+gpgga_info = "$GPGGA,"
+ser = serial.Serial("/dev/ttyAMA0")  # Open port with baud rate
+GPGGA_buffer = 0
+NMEA_buff = 0
+lat_in_degrees = 0
+long_in_degrees = 0
+
+try:
+    while True:
+        received_data = (str)(ser.readline())  # Read NMEA string received
+        GPGGA_data_available = received_data.find(gpgga_info)  # Check for NMEA GPGGA string                 
+        if GPGGA_data_available > 0:
+            GPGGA_buffer = received_data.split("$GPGGA,", 1)[1]  # Store data coming after "$GPGGA," string 
+            NMEA_buff = (GPGGA_buffer.split(','))  # Store comma separated data in buffer
+            GPS_Info()  # Get time, latitude, longitude
+except KeyboardInterrupt:
+    print("Terminated by user.")
+```
+
+### Key Changes
+- Removed all Google Maps-related functionality.
+- The script now only prints the latitude and longitude values to the terminal.
+- Error handling and checks for valid latitude and longitude values are still in place.
+
+### Running the Code
+Run the script in a terminal, and it should continuously read from the GPS module and print the latitude and longitude until you terminate it (e.g., by pressing `Ctrl + C`). Ensure your GPS module is connected correctly and is sending valid GPGGA sentences.

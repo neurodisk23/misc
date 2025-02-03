@@ -1,0 +1,225 @@
+Installing GPS Applications
+sudo apt-get install gpsd gpsd-clients
+Now, run the GPSD client
+
+sudo gpsd /dev/ttyS0 -F /var/run/gpsd.sock
+Here, ttyS0 is my serial port where GPS data is received, for other Raspberry Pi models this might be different. So, just replace ‘XXX’ in ttyXXX with appropriate name.
+
+Now, type the following code to check the connections.
+
+cat /dev/ttyS0
+You should see a continuous stream of data. It is raw GPS data in NMEA format. If you see something like $GPTXT,01,01,01,NMEA unknown msg*58 a lot then check your serial port configuration. If the ‘echo’ option is enabled that will cause this problem. Just do stty -F /dev/ttyS0 -echo to disable echo then cat the gps serial device and those messages should stop.
+
+Now, after this type cgps and you should see something like below.
+
+
+After some time the data will be shown here.
+
+If the cat command shows data but you get nothing in cgps at all do the following :
+
+Check if port 2947 is open in firewall.
+Open the file /etc/default/gps in sudo with any text editor and change DEVICES=”” to DEVICES=”/dev/ttyS0" and then type sudo systemctl restart gpsd
+Note : It may take sometime for GPS module to receive data. So it time or anything else is shown in cgps that means configurations are all ok but module is not receiving GPS signals. So, just wait for sometime.
+
+Some troubleshooting steps if cgps does not get a fix
+1. Check GPS data stream
+
+cat /dev/ttyS0
+You should see the NMEA stream
+
+2. Check GPS data with gpsmon
+
+gpsmon /dev/ttyS0
+It should run properly with the data stream
+
+Note : It first two steps didn’t work, check you connections and configurations properly.
+
+3. Run gpsd in debug mode
+
+sudo gpsd /dev/ttyS0 -N -D3 -F /var/run/gpsd.sock
+It should say that it is already running
+
+4. Now type the following lines.
+
+sudo systemctl stop gpsd.socket
+sudo systemctl disable gpsd.socket
+5. Now, launch gpsd again
+
+sudo gpsd /dev/ttyS0 -F /var/run/gpsd.sock
+Now, cgps should get a fix and no timeout.
+
+After all the proper configurations, you need to run sudo gpsd /dev/ttyS0 -F /var/run/gpsd.sock every time the pi is rebooted. If you are using it as an IOT project you might want to automate everything.
+
+Automating
+Create a file at /etc/rc.local
+
+sudo nano /etc/rc.local
+Add following contents to the file
+
+#!/bin/sh -e
+sudo gpsd /dev/ttyS0 -F /var/run/gpsd.sock
+exit 0
+This will run our sudo command on every boot.
+
+Using python to get Latitude and Longitude
+I used a simple python script to get latitude and longitude from the gps module.
+
+
+Here, I print the Latitude and Longitude but you can actually do whatever you like with them and later on make this script to run every time on boot using cron job.
+
+To make a cron job first type crontab -e and in the window that appears write the following command.
+
+@reboot cd /home/pi/ && python sendCoordinate.py
+Change the path and file name accordingly.
+
+Small Issue
+Now, after everything was setup the system was working pretty nice. But after 2–3 trial runs I found that something was crashing and I was not able to get the coordinates on my web server.
+
+Now, there could be only two problems, either the GPS module is not configuring properly on every startup or my internet connection had some issues on boot. After hours of hit-and-try, and trying several permutations and combinations of different things on the internet I did the following to make it work.
+
+I made a shell script startup.sh and added the following lines of code to it.
+
+sudo gpsd /dev/ttyS0 -F /var/run/gpsd.sock
+stty -F /dev/ttyS0 -echo
+sudo systemctl stop gpsd.socket
+sudo systemctl disable gpsd.socket
+sudo killall gpsd
+sudo systemctl stop gpsd.socket
+sudo systemctl disable gpsd.socket
+sudo gpsd /dev/ttyS0 -F /var/run/gpsd.sock
+sleep 10s
+nohup python /home/pi/sendCoordinate.py > pylog.test &
+Then I made it an executable.
+
+sudo chmod 755 ./startup.sh
+After added it as cronjob to be executed on every startup and everything ran without any problems. My crontab file looked like this.
+
+@reboot cd /home/pi/ && sh startup.sh
+Note : I know some of the lines in startup.sh are redundant and may not be necessary but due to time crunch I was not able to further test it and make i
+
+
+
+
+
+
+
+
+
+Step 5: Disable the Raspberry Pi Serial Getty Service
+a. If in your output, Serial0 is linked with ttyAMA0, then to disable it use the below command,
+
+sudo systemctl stop serial-getty@ttyAMA0.service
+sudo systemctl disable serial-getty@ttyAMA0.service
+
+b. If in your output Serial0 is linked with ttys0, then to disable it use the below command,
+
+sudo systemctl stop serial-getty@ttys0.service
+sudo systemctl disable serial-getty@ttys0.service
+
+Step 6: Activate Ttys0
+To enable the ttyso use following command,
+
+sudo systemctl enable serial-getty@ttys0.service
+
+Step 7: Install Minicom and Pynmea2
+Use minicom python library to connect with the GPS module and make sense of the data.
+
+sudo apt-get install minicom
+
+Use pynmea2 python library to parse the received NMEA data.
+
+sudo pip install pynmea2
+
+
+
+Step 8: Test Output
+Test Output
+To test the GPS run the command sudo cat /dev/ttyAMA0, You'll get the output as shown above.
+
+Step 9: Write Python Code
+Now, write the python code for the interfacing of the GPS module with Raspberry pi.
+
+import serial
+
+Import time
+
+import string import pynmea2
+
+while True: port=“/dev/ttyAMAO”
+
+ser=serial.Serial(port,baudrate=9600,timeout=0.5)
+
+dataout =pynmea2.NMEAStreamReader()
+
+newdata=ser.readline()
+
+if newdata[0:6]==“$GPRMC”:
+
+newmsg=pynmea2.parse(newdata)
+
+lat=newmsg.latitude
+
+lng=newmsg.longitude
+
+gps=“Latitude=" +str(lat) + “and Longitude=" +str(lng)
+
+print(gps)
+
+Step 10: Final Output
+Final Output
+The window shown above is the final output. It provides the data of your exact position in terms of Latitude and Longitude.
+
+
+
+
+Here's the corrected code:
+
+```python
+import serial
+import time
+import string
+import pynmea2
+
+while True:
+    # Specify the correct serial port name
+    port = "/dev/ttyAMA0"  # Correct spelling of "/dev/ttyAMA0"
+
+    try:
+        # Initialize serial connection
+        ser = serial.Serial(port, baudrate=9600, timeout=0.5)
+
+        # Create NMEA reader object
+        dataout = pynmea2.NMEAReader()
+
+        # Read a single NMEA message
+        newdata = ser.readline().decode()  # Decode the byte string to a regular string
+
+        # Check if the message is a $GPRMC message
+        if newdata.startswith("$GPRMC"):
+            # Parse the message
+            newmsg = pynmea2.parse(newdata)
+
+            # Extract latitude and longitude
+            lat = newmsg.latitude
+            lng = newmsg.longitude
+
+            # Create a string to hold the GPS coordinates
+            gps = "Latitude: " + str(lat) + " and Longitude: " + str(lng)
+
+            # Print the GPS coordinates
+            print(gps)
+    except serial.SerialException as e:
+        print(f"Error: {e}")
+    finally:
+        # Always close the serial connection
+        ser.close()
+```
+
+I made the following corrections:
+
+1. Fixed the spelling of the serial port name to "/dev/ttyAMA0".
+2. Added a try-except-finally block to handle any serial connection errors and ensure that the serial connection is closed properly, regardless of whether an exception occurs.
+3. Used the `startswith()` method to check if the message starts with "$GPRMC" instead of checking for a slice of the string.
+4. Used the `decode()` method to convert the `bytes` object returned by `ser.readline()` to a regular string.
+5. Added quotes around the latitude and longitude labels in the `gps` string.
+6. Renamed `dataout` to `NMEAReader` as that is the correct class name in the `pynmea2` library.
